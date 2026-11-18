@@ -355,6 +355,8 @@ async function repoGatekeeper() {
       unwrap(hooks.getCommit(scenario, props, ref, cache === undefined ? undefined : stubOf(cache))),
     resolveRef: (ref: string | undefined, cache?: TestGitCache) =>
       unwrap(hooks.resolveRef(scenario, props, ref, cache === undefined ? undefined : stubOf(cache))),
+    remoteBranchHead: (branch: string, queue: TestApprovalQueue) => unwrap(hooks.sessionRead(
+      scenario, props, stubOf(queue), [{ method: "getRemoteBranchHead", args: [branch] }])),
     repoMetadata: () => unwrap(hooks.repoMetadata(scenario, props)),
   };
 }
@@ -589,6 +591,28 @@ describe("simulation", () => {
     const page = await gk.listBranchesFirstPage(50);
     expect(page).toContainEqual({ name: "feature", headCommit: HEAD1, protected: false });
     expect(page?.filter(branch => branch.name === "feature")).toHaveLength(1);
+  });
+
+  it("verifies a pushed branch against GitHub without reading simulated state", async () => {
+    const github = new FakeGitHub();
+    github.branches.set("main", BASE);
+    github.install();
+    const gk = await repoGatekeeper();
+    const cache = new TestGitCache().withCommit(HEAD1, commitPayload([BASE], "x"));
+    const queue = new TestApprovalQueue();
+
+    const action = await queuePush(gk, cache, queue, "feature", HEAD1);
+    expect(await gk.listBranchesFirstPage(50)).toContainEqual({
+      name: "feature", headCommit: HEAD1, protected: false,
+    });
+    expect(await gk.remoteBranchHead("feature", queue)).toBeNull();
+
+    github.respondToPush("unpack ok", "ok refs/heads/feature");
+    await gk.applyAction(action!.approvalId, cache);
+    expect(github.receivePackExchanges).toHaveLength(1);
+    github.branches.set("feature", HEAD1);
+    expect(await gk.remoteBranchHead("feature", queue)).toBe(HEAD1);
+    expect(queue.observations).toEqual(["Read remote head of feature", "Read remote head of feature"]);
   });
 
   it("drops an injected branch whose push was rejected before the page was drained, still withholding its head", async () => {

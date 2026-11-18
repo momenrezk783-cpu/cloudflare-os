@@ -42,6 +42,12 @@ export interface GitHubRepo {
   resolveRef(ref?: string): Promise<string>;
 
   /**
+   * Reads the branch head directly from GitHub, returning null if the branch does not exist.
+   * Use this to verify a push. Other reads such as `resolveRef()` can include queued pushes.
+   */
+  getRemoteBranchHead(branch: string): Promise<string | null>;
+
+  /**
    * Looks up a single commit.
    *
    * `ref` may be a full commit id, an unambiguously truncated commit id, a branch name, or a tag

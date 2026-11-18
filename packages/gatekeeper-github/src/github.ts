@@ -6429,9 +6429,8 @@ export class GitHubGatekeeperImpl extends DurableObject<Env, GitHubGatekeeperImp
    */
   async preparePush(branch: string, commitId: string, force: boolean,
                     gitCache: RpcStub<GitCache>): Promise<PushAction | null> {
-    const { owner, repo } = this.ctx.props;
     const [realHead, gatedBranch] = await Promise.all([
-      this.#withApi(api => api.getBranchHead(owner, repo, branch)),
+      this.getRemoteBranchHead(branch),
       this.#isGatedBranch(branch).then(gated => gated ?? true),
     ]);
     const expectedOldSha = this.#simulateBranchHead(branch, realHead) ?? ZERO_OID;
@@ -6456,6 +6455,11 @@ export class GitHubGatekeeperImpl extends DurableObject<Env, GitHubGatekeeperImp
       force,
       gatedBranch,
     };
+  }
+
+  async getRemoteBranchHead(branch: string): Promise<string | null> {
+    const { owner, repo } = this.ctx.props;
+    return this.#withApi(api => api.getBranchHead(owner, repo, branch));
   }
 
   /**
@@ -6839,6 +6843,16 @@ export class GitHubRepoSessionImpl extends RpcTarget implements GitHubRepoSessio
       await this.#gitCache.advertise(commitIdsOfSummary(details));
     }
     return details;
+  }
+
+  async getRemoteBranchHead(branch: string): Promise<string | null> {
+    validateBranchName(branch);
+    const head = await this.#gatekeeper.getRemoteBranchHead(branch);
+    await this.#gatekeeper.authorizeRead(this.#approvalQueue, {
+      title: `Read remote head of ${branch}`,
+      description: `Read the current head of branch ${JSON.stringify(branch)} directly from GitHub.`,
+    });
+    return head;
   }
 
   async push(branch: string, commitId: string, options?: { force?: boolean }): Promise<void> {
