@@ -1,0 +1,114 @@
+// Account-specific config for the existing hosted Mizan Cloudflare OS backend.
+// Runtime variables and secrets are managed on the Worker.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mizanconsult-backend",
+  "main": ".wrangler/validate/src/server.ts",
+  "keep_vars": true,
+  "workers_dev": false,
+  "preview_urls": false,
+  "compatibility_date": "2026-09-04",
+  "compatibility_flags": [
+    "allow_irrevocable_stub_storage",
+    "global_fetch_strictly_public",
+    "nodejs_compat"
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": false,
+      "head_sampling_rate": 0.5
+    }
+  },
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "AVATARS",
+      "id": "f10325ec97764237912ff4dde1aaac42"
+    },
+    {
+      "binding": "BLUEPRINTS",
+      "id": "1d729ffcc2cc473bafdd4c6149e31655"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLUEPRINT_CONTENT",
+      "bucket_name": "mizanconsult-blueprint-content"
+    }
+  ],
+  "worker_loaders": [
+    {
+      "binding": "LOADER"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": [
+        "UserDurableObject",
+        "OverseerDurableObject"
+      ]
+    },
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "AdminSettings"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "PendingLogin"
+      ]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": [
+        "UserDirectoryDurableObject"
+      ]
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": [
+        "AdminAuditDurableObject"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "binding": "GATEKEEPER_CONTEXT",
+      "service": "mizanconsult-gk-context",
+      "entrypoint": "GatekeeperVendor",
+      "props": {
+        "sharingDomain": "https://manage.mizanconsult.com/"
+      }
+    },
+    {
+      "binding": "GATEKEEPER_SCHEDULER",
+      "service": "mizanconsult-gk-scheduler",
+      "entrypoint": "GatekeeperVendor"
+    },
+    {
+      "binding": "GATEKEEPER_WEBSEARCH",
+      "service": "mizanconsult-gk-websearch",
+      "entrypoint": "GatekeeperVendor"
+    }
+  ],
+  "ai": {
+    "binding": "WORKERS_AI"
+  },
+  "build": {
+    "command": "pnpm --filter @gadgets/workshop-backend run build:worker",
+    "watch_dir": "src"
+  }
+}
