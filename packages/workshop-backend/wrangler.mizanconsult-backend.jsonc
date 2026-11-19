@@ -46,6 +46,9 @@
       "bucket_name": "mizanconsult-blueprint-content"
     }
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "MIZAN_DEV_SANDBOX", "class_name": "MizanDevSandbox", "script_name": "opencode-harness-example" }]
+  },
   "worker_loaders": [
     {
       "binding": "LOADER"
