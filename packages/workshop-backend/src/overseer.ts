@@ -10246,6 +10246,30 @@ class OverseerImpl implements AgentHooks {
   #codeModeResolvers = new Map<string, (trace: TraceItem) => void>();
   #codeModeOutputSubscribers = new Map<string, (delta: string) => void>();
 
+  async linuxSandbox(operation: "status" | "exec" | "sync", input: {
+    command?: string; cwd?: string; timeoutSeconds?: number;
+    files?: {path: string; content: string}[];
+  }): Promise<string> {
+    type SandboxStub = {
+      getStatus(): Promise<unknown>;
+      runCommand(command: string, files: {path: string; content: string}[], options: {
+        cwd?: string; timeoutSeconds?: number;
+      }): Promise<unknown>;
+      syncWorkspace(files: {path: string; content: string}[]): Promise<unknown>;
+    };
+    const namespace = (this.env as unknown as {
+      MIZAN_DEV_SANDBOX?: { getByName(name: string): SandboxStub };
+    }).MIZAN_DEV_SANDBOX;
+    if (!namespace) throw new Error("Linux sandbox binding MIZAN_DEV_SANDBOX is not configured.");
+    const stub = namespace.getByName("cloudflare-os:" + this.ctx.id.toString());
+    const result = operation === "status" ? await stub.getStatus()
+        : operation === "sync" ? await stub.syncWorkspace(input.files ?? [])
+        : await stub.runCommand(input.command ?? "", input.files ?? [], {
+            cwd: input.cwd, timeoutSeconds: input.timeoutSeconds,
+          });
+    return JSON.stringify(result);
+  }
+
   async executeCodeMode(chatId: number, code: string,
                         initiator: AiChatAuthorInfo, initiatorModelId: string,
                         bindings: Record<string, ChatBindingEntry>,
