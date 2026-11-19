@@ -90,7 +90,7 @@
       "service": "mizanconsult-gk-context",
       "entrypoint": "GatekeeperVendor",
       "props": {
-        "sharingDomain": "https://manage.mizanconsult.com"
+        "sharingDomain": "https://manage.mizanconsult.com/"
       }
     },
     {
