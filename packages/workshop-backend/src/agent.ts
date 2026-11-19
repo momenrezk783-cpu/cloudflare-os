@@ -340,6 +340,8 @@ export function makeStoredAssistantMessage(message: AssistantMessage): StoredAss
  *   overseer.ts?
  */
 export interface AgentHooks {
+  linuxSandbox(operation: "status" | "exec" | "sync", input: { command?: string; cwd?: string; timeoutSeconds?: number; files?: {path: string; content: string}[] }): Promise<string>;
+
   getChatAgentContext(chatId: number): AiChatAgentContext;
 
   /** Records the chat's AiChatAgentContext.workspacePrompt. */
@@ -735,6 +737,10 @@ Draft requested text directly in chat; do not look up blueprints or create a Gad
 Note that users rarely ask for "a Gadget" in those words. They ask for a thing: a doc, a deck, a tracker, a tool that does X. "Summarize this doc", "draft an email", or "check these figures" usually asks for an answer or one-off task, not a new Gadget. Work on an existing Gadget when the request refers to it. If a useful answer completes the task, give that answer. Ask a brief clarification when it's unclear whether the user wants something created; otherwise, proceed. When the goal is unclear, ask what the user wants to accomplish before suggesting an application.
 
 Tools refer to Gadgets by their binding name in your env: the file tools (\`readFile\`, \`writeFile\`, \`editFile\`, \`grep\`) take a \`workpiece\` parameter naming the Gadget that owns the file, and \`setGadgetBinding\` takes a \`gadget\` parameter naming the Gadget whose bindings to modify. Some older workspaces have a "default" Gadget (noted in the gadget list) which the file tools fall back to when \`workpiece\` is omitted; even so, prefer passing the name explicitly.
+
+# Linux container tools
+
+You have linux_sandbox_status, linux_exec and linux_sync_workspace. Use linux_exec for real Bash, git CLI, npm/npx, Node.js, Python, curl and jq. These run in a separate persistent /workspace Linux environment scoped to this Cloudflare OS workspace. Gadget and worktree files are not automatically synchronized; pass explicit files and review the returned files before editing a Gadget or worktree. The container's filesystem may be reset when it sleeps, so preserve important results in the workspace. Credentials from connected GitHub resources are not automatically available to shell git; never claim a push succeeded without checking the remote result. Use existing GitHub bindings for authenticated operations when appropriate.
 
 # Git and connector tools
 
@@ -3467,6 +3473,35 @@ async function runAgentPass(
   });
 
   let tools: Record<string, AgentTool> = {
+    linux_sandbox_status: defineTool({
+      name: "linux_sandbox_status",
+      label: "Check Linux sandbox",
+      description: "Check this workspace's Linux container and installed git, node, npm, python3, curl and jq commands.",
+      parameters: Type.Object({}),
+      execute: async () => toolResult(await hooks.linuxSandbox("status", {})),
+    }),
+    linux_exec: defineTool({
+      name: "linux_exec",
+      label: "Run Linux command",
+      description: "Run a Bash command in this workspace's isolated Linux container. Supports git clone/status/commit/push, node, npm, npx, python3, curl and jq. cwd must be within /workspace. Files here are separate from Gadget/worktree files: pass text files explicitly and inspect returned files before applying edits. No GitHub or Cloudflare secrets are injected. Respect user authorization for external writes, deployments and deletion.",
+      parameters: Type.Object({
+        command: Type.String({ minLength: 1, maxLength: 8000 }),
+        cwd: Type.Optional(Type.String()),
+        timeoutSeconds: Type.Optional(Type.Number({ minimum: 5, maximum: 120 })),
+        files: Type.Optional(Type.Array(Type.Object({path: Type.String(), content: Type.String()}), {maxItems: 200})),
+      }),
+      execute: async (_toolCallId, input) => toolResult(await hooks.linuxSandbox("exec", input)),
+    }),
+    linux_sync_workspace: defineTool({
+      name: "linux_sync_workspace",
+      label: "Transfer Linux files",
+      description: "Write explicit text files to this workspace's container and return its eligible text files. Does not automatically modify Gadgets or worktrees. Secret files, .git and node_modules are excluded by the container.",
+      parameters: Type.Object({
+        files: Type.Array(Type.Object({path: Type.String(), content: Type.String()}), {maxItems: 200}),
+      }),
+      execute: async (_toolCallId, input) => toolResult(await hooks.linuxSandbox("sync", input)),
+    }),
+
     readFile: defineTool({
       name: "readFile",
       label: "Read file",
