@@ -1,0 +1,116 @@
+name: Repair Mizan GitHub connector
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: mizan-github-connector
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 1070f42f50aba614a00c682d2957befe
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLIENT_ID: ${{ secrets.GITHUB_OAUTH_CLIENT_ID }}
+      CLIENT_SECRET: ${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Check deployment credentials
+        shell: bash
+        run: |
+          for key in CLOUDFLARE_API_TOKEN CLIENT_ID CLIENT_SECRET; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing credential: $key. Set the corresponding repository Actions secret."
+              exit 1
+            fi
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Prepare a dedicated connector Worker
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const config = {
+            name: 'mizanconsult-github-connector',
+            main: '.wrangler/validate/src/github.ts',
+            compatibility_date: '2026-09-04',
+            compatibility_flags: ['allow_irrevocable_stub_storage', 'nodejs_als'],
+            keep_vars: true,
+            workers_dev: false,
+            preview_urls: false,
+            vars: {
+              BASE_URL: 'https://manage.mizanconsult.com/gatekeeper/github',
+              WEBHOOK_ORIGIN: 'https://manage.mizanconsult.com'
+            },
+            observability: {enabled: true},
+            build: {command: 'pnpm exec capnweb-validate build --out .wrangler/validate', watch_dir: 'src'},
+            rules: [{type: 'Text', globs: ['**/*.txt', '**/*.svg'], fallthrough: false}],
+            migrations: [
+              {tag: 'v0', new_sqlite_classes: ['UserAccount', 'GitHubGatekeeperImpl']},
+              {tag: 'v1', new_sqlite_classes: ['GitHubHookDriver']}
+            ]
+          };
+          fs.writeFileSync('packages/gatekeeper-github/wrangler.mizanconsult-github.jsonc', JSON.stringify(config, null, 2) + '\n');
+          NODE
+      - name: Deploy GitHub implementation
+        run: pnpm exec wrangler deploy --config packages/gatekeeper-github/wrangler.mizanconsult-github.jsonc
+      - name: Set OAuth credentials securely
+        shell: bash
+        run: |
+          node -e 'process.stdout.write(JSON.stringify({CLIENT_ID:process.env.CLIENT_ID,CLIENT_SECRET:process.env.CLIENT_SECRET}))' | pnpm exec wrangler secret bulk --config packages/gatekeeper-github/wrangler.mizanconsult-github.jsonc
+      - name: Connect Router and Backend
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const base = 'https://api.cloudflare.com/client/v4/accounts/' + process.env.CLOUDFLARE_ACCOUNT_ID;
+          async function api(path, init = {}) {
+            const headers = new Headers(init.headers);
+            headers.set('Authorization', 'Bearer ' + process.env.CLOUDFLARE_API_TOKEN);
+            const response = await fetch(base + path, {...init, headers});
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error('Cloudflare request failed: ' + response.status + ' ' + JSON.stringify(data.errors));
+            return data.result;
+          }
+          const target = 'mizanconsult-github-connector';
+          for (const [worker, file, entrypoint] of [
+            ['mizanconsult', 'wrangler.mizanconsult.jsonc', undefined],
+            ['mizanconsult-backend', 'packages/workshop-backend/wrangler.mizanconsult-backend.jsonc', 'GatekeeperVendor']
+          ]) {
+            const path = '/workers/scripts/' + worker + '/settings';
+            const current = await api(path);
+            const bindings = current.bindings.filter(b => b.name !== 'GATEKEEPER_GITHUB');
+            bindings.push({name:'GATEKEEPER_GITHUB', type:'service', service:target, ...(entrypoint ? {entrypoint} : {})});
+            const form = new FormData();
+            form.append('settings', new Blob([JSON.stringify({bindings})], {type:'application/json'}));
+            await api(path, {method:'PATCH', body:form});
+            const verified = await api(path);
+            if (!verified.bindings.some(b => b.name === 'GATEKEEPER_GITHUB' && b.service === target && b.entrypoint === entrypoint)) {
+              throw new Error('GitHub binding verification failed for ' + worker);
+            }
+            // These account-specific files contain only full-line comments.
+            const config = JSON.parse(fs.readFileSync(file,'utf8').replace(/^\s*\/\/.*$/gm,''));
+            config.services = (config.services || []).filter(b => b.binding !== 'GATEKEEPER_GITHUB');
+            config.services.push({binding:'GATEKEEPER_GITHUB', service:target, ...(entrypoint ? {entrypoint} : {})});
+            fs.writeFileSync(file, JSON.stringify(config,null,2) + '\n');
+            console.log(worker + ': GitHub binding verified');
+          }
+          NODE
+      - name: Preserve deployment configuration in main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wrangler.mizanconsult.jsonc packages/workshop-backend/wrangler.mizanconsult-backend.jsonc packages/gatekeeper-github/wrangler.mizanconsult-github.jsonc
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: deploy and connect dedicated Mizan GitHub connector"
+            git push origin HEAD:main
+          fi
