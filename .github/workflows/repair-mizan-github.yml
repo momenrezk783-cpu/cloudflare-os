@@ -12,8 +12,8 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: 1070f42f50aba614a00c682d2957befe
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLIENT_ID: ${{ secrets.GITHUB_OAUTH_CLIENT_ID }}
-      CLIENT_SECRET: ${{ secrets.GITHUB_OAUTH_CLIENT_SECRET }}
+      CLIENT_ID: ${{ secrets.MIZAN_GH_OAUTH_CLIENT_ID }}
+      CLIENT_SECRET: ${{ secrets.MIZAN_GH_OAUTH_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
