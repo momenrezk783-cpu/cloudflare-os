@@ -61,7 +61,8 @@ jobs:
           fs.writeFileSync('packages/gatekeeper-github/wrangler.mizanconsult-github.jsonc', JSON.stringify(config, null, 2) + '\n');
           NODE
       - name: Deploy GitHub implementation
-        run: pnpm exec wrangler deploy --config packages/gatekeeper-github/wrangler.mizanconsult-github.jsonc
+        working-directory: packages/gatekeeper-github
+        run: pnpm exec wrangler deploy --config wrangler.mizanconsult-github.jsonc
       - name: Set OAuth credentials securely
         shell: bash
         run: |
