@@ -1,6 +1,3 @@
-// Account-specific router config for Workers Builds. Run Wrangler from the repo root.
-// The root wrangler.jsonc is generated for local development.
-// The backend and gatekeepers are deployed separately.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "mizanconsult",
@@ -33,6 +30,10 @@
     {
       "binding": "GATEKEEPER_WEBSEARCH",
       "service": "mizanconsult-gk-websearch"
+    },
+    {
+      "binding": "GATEKEEPER_GITHUB",
+      "service": "mizanconsult-github-connector"
     }
   ],
   "assets": {

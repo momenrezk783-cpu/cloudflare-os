@@ -1,5 +1,3 @@
-// Account-specific config for the existing hosted Mizan Cloudflare OS backend.
-// Runtime variables and secrets are managed on the Worker.
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "mizanconsult-backend",
@@ -47,7 +45,13 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "MIZAN_DEV_SANDBOX", "class_name": "MizanDevSandbox", "script_name": "opencode-harness-example" }]
+    "bindings": [
+      {
+        "name": "MIZAN_DEV_SANDBOX",
+        "class_name": "MizanDevSandbox",
+        "script_name": "opencode-harness-example"
+      }
+    ]
   },
   "worker_loaders": [
     {
@@ -104,6 +108,11 @@
     {
       "binding": "GATEKEEPER_WEBSEARCH",
       "service": "mizanconsult-gk-websearch",
+      "entrypoint": "GatekeeperVendor"
+    },
+    {
+      "binding": "GATEKEEPER_GITHUB",
+      "service": "mizanconsult-github-connector",
       "entrypoint": "GatekeeperVendor"
     }
   ],
